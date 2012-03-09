@@ -216,6 +216,20 @@ function rooms_booking_edit_form($form, &$form_state, $booking) {
   );
 
   $form['rooms_date_range'] = rooms_date_range_fields($form['rooms_date_range']);
+
+  $form['values']['group_size'] = array(
+    '#type' => 'select',
+    '#title' => 'Group Size',
+    '#options' => array(
+      '1' => '1',
+      '2' => '2',
+      '3' => '3',
+      '4' => '4',
+      '5' => '5',
+      '6' => '6',
+    ),
+    '#default_value' =>  '2',
+  );
   
   // Unset the default for max days away for bookings since we are on the admin side here
   drupal_add_js(array('rooms' => array('roomsBookingStartDay' => 0)), 'setting');
@@ -307,7 +321,7 @@ function rooms_booking_edit_form($form, &$form_state, $booking) {
         $search_unit_type = $booking->unit_type;
       }
 
-      $available_units = rooms_booking_edit_form_get_rooms($search_unit_type, $form_state['input']['rooms_start_date']['date'], $form_state['input']['rooms_end_date']['date'], $booking);
+      $available_units = rooms_booking_edit_form_get_rooms($search_unit_type, $form_state['input']['rooms_start_date']['date'], $form_state['input']['rooms_end_date']['date'], $booking, $form_state['values']['group_size']);
       if ($available_units == 2) {
         $form['availability_fieldset']['unit_fieldset']['instructions'] = array(
           '#markup' => t('No @search_unit_type are available', array('@search_unit_type' => $search_unit_type)),
@@ -421,7 +435,7 @@ function rooms_booking_edit_form_unit_type_callback(&$form, $form_state) {
  * It makes special provisions for the currently selected unit - to consider that
  * as "available" as well.
  */
-function rooms_booking_edit_form_get_rooms($select, $start_date = 0, $end_date = 0, $current_booking) {
+function rooms_booking_edit_form_get_rooms($select, $start_date = 0, $end_date = 0, $current_booking, $group_size) {
   // Set the unit types
   $unit_types = array($select);
 
@@ -429,10 +443,10 @@ function rooms_booking_edit_form_get_rooms($select, $start_date = 0, $end_date =
   
   // The current unit for this booking should also return as available
   $current_booking_state = isset($current_booking->booking_id) ? rooms_availability_assign_id($current_booking->booking_id) : '';
-  
-  $ac = new AvailabilityAgent($start_date, $end_date, 1, 1, array(ROOMS_AVAILABLE, ROOMS_ON_REQUEST, $current_booking_state), $unit_types);
+
+  $ac = new AvailabilityAgent($start_date, $end_date, $group_size, 1, array(ROOMS_AVAILABLE, ROOMS_ON_REQUEST, $current_booking_state), $unit_types);
   $available_units = $ac->checkAvailability();
-    
+
   return $available_units;   
 }
 

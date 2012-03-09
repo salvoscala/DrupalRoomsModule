@@ -8,19 +8,25 @@ class UnitPricingCalendar {
 
   // The bookable unit the Calendar is relevant to  
   protected $unit_id;
+
+  protected $unit;
   
   // The default state for the room if it has no specific booking
   protected $default_state;
   
   // The default price for the room
   protected $default_price;
+
+  // Array
+  protected $price_modifiers;
   
-  public function __construct($unit_id) {
+  public function __construct($unit_id, $price_modifiers = array()) {
     $this->unit_id = $unit_id;
+    $this->price_modifiers = $price_modifiers;
     // Load the booking unit
-    $unit = rooms_unit_load($unit_id);
-    $this->default_state = $unit->default_state;
-    $this->default_price = $unit->base_price;
+    $this->unit = rooms_unit_load($unit_id);
+    $this->default_state = $this->unit->default_state;
+    $this->default_price = $this->unit->base_price;
   }
   
   
@@ -55,6 +61,33 @@ class UnitPricingCalendar {
     foreach ($pricing_events as $event) {
       $days = $event->diff()->d + 1;
       $price = $price + ($days * $event->amount);
+    }
+
+    if (!empty($this->price_modifiers)) {
+      foreach ($this->price_modifiers as $modifiers) {
+        if ($modifiers['#type'] == ROOMS_PRICE_SINGLE_OCCUPANCY) {
+          $price -= $price * $this->unit->data['singlediscount'] / 100;
+        }
+        elseif ($modifiers['#type'] == ROOMS_DYNAMIC_MODIFIER) {
+          switch ($modifiers['#op_type']) {
+            case ROOMS_ADD:
+              $price += $modifiers['#amount'];
+              break;
+            case ROOMS_SUB:
+              $price -= $modifiers['#amount'];
+              break;
+            case ROOMS_REPLACE:
+              $price = $modifiers['#amount'];
+              break;
+            case ROOMS_INCREASE:
+              $price += $price * $modifiers['#amount'] / 100;
+              break;
+            case ROOMS_DECREASE:
+              $price -= $price * $modifiers['#amount'] / 100;
+              break;
+          }
+        }
+      }
     }
     
     return $price;
@@ -181,8 +214,7 @@ class UnitPricingCalendar {
         }
       }
     }
-    
-    
+
     // With the results from the db in place fill in any missing months
     // with the default state for the unit
     for ($j = $s->startYear(); $j <= $s->endYear(); $j++) {
@@ -227,7 +259,7 @@ class UnitPricingCalendar {
             ksort($results[$this->unit_id][$j]);
           }
         }
-      }        
+      }
     }
 
     // With all the months in place we now need to clean results to set the right start and end date
@@ -267,7 +299,7 @@ class UnitPricingCalendar {
 
       }
     }
-        
+
     // With the results in place we do a states array with the start and
     // end dates of each event
     foreach ($results[$this->unit_id] as $year => $months) {
@@ -301,7 +333,7 @@ class UnitPricingCalendar {
         $results[$this->unit_id][$year][$mid]['states'] = $unique_states;
       }
     }
-    
+
     return $results;
   }
   

@@ -76,7 +76,14 @@ class AvailabilityAgent {
     commerce_product_save($room_booking);
   
     // Calculate the price
-    $price_calendar = new UnitPricingCalendar($unit_id);
+    if ($this->group_size == 1) {
+      $price_modifiers = array();
+      $price_modifiers['single'] = array('#type' => ROOMS_PRICE_SINGLE_OCCUPANCY);
+      $price_calendar = new UnitPricingCalendar($unit_id, $price_modifiers);
+    }
+    else {
+      $price_calendar = new UnitPricingCalendar($unit_id);
+    }
     $price = $price_calendar->calculatePrice($this->start_date, $this->end_date);
     // Convert to integer value as this is what Commerce expects
     $price = commerce_currency_decimal_to_amount($price, commerce_default_currency());
@@ -205,7 +212,14 @@ class AvailabilityAgent {
         $state_diff = array_diff($states, $this->valid_states);
         if (count($state_diff) == 0) {
           // Calculate the price as well to add to the array
-          $price_calendar = new UnitPricingCalendar($unit->unit_id);
+          if ($this->group_size == 1) {
+            $price_modifiers = array();
+            $price_modifiers['single'] = array('#type' => ROOMS_PRICE_SINGLE_OCCUPANCY);
+            $price_calendar = new UnitPricingCalendar($unit->unit_id, $price_modifiers);
+          }
+          else {
+            $price_calendar = new UnitPricingCalendar($unit->unit_id);
+          }
           $price = $price_calendar->calculatePrice($this->start_date, $this->end_date);
           $units[$unit->type][$price][$unit->unit_id]['unit'] = $unit;
           $units[$unit->type][$price][$unit->unit_id]['price'] = $price; 
