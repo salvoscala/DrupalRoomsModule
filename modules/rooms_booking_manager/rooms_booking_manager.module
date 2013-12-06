@@ -372,6 +372,7 @@ function rooms_booking_manager_present_individual_rooms($units_per_type, $conten
       '#suffix' => '</h3>'
     );
 
+    $group = 0;
     foreach ($price_level as $price => $units) {
       foreach ($units as $unit_id => $unit) {
         // Load the unit and render
@@ -382,7 +383,33 @@ function rooms_booking_manager_present_individual_rooms($units_per_type, $conten
 
         // Add purchase forms - passing through hook_forms to handle multiple forms on the page
         $form = 'book_unit_form_' . $unit_id;
-        $content['units_per_type'][$type][$price][$unit_id]['book_unit_form'] = drupal_get_form($form, $unit_obj, $start_date, $end_date, $booking_parameters[1]['adults'], $unit['state'], $unit['price']);
+
+        $group++;
+        // Sometimes multiple units are specified, so we'd like
+        // to match up each requested room with the according default
+        // group size and children list from the availability search.
+        // If the value is not available, fall back to the first group,
+        // and if nothing is there, fall back to 0;
+        if (isset($booking_parameters[$group]['adults'])) {
+          $adults = $booking_parameters[$group]['adults'];
+        }
+        elseif (isset($booking_parameters[1]['adults'])) {
+          $adults = $booking_parameters[1]['adults'];
+        }
+        else {
+          $adults = 0;
+        }
+        if (isset($booking_parameters[$group]['children'])) {
+          $children = $booking_parameters[$group]['children'];
+        }
+        elseif (isset($booking_parameters[1]['children'])) {
+          $children = $booking_parameters[1]['children'];
+        }
+        else {
+          $children = 0;
+        }
+
+        $content['units_per_type'][$type][$price][$unit_id]['book_unit_form'] = drupal_get_form($form, $unit_obj, $start_date, $end_date, $adults, $unit['state'], $unit['price'], $children);
       }
     }
   }
@@ -439,7 +466,7 @@ function rooms_booking_manager_forms($form_id, $args) {
  * The available units have already been identified by
  * rooms_booking_manager_results_page.
  */
-function book_unit_form_builder($form_id, $form_state, $unit, $start_date, $end_date, $group_size_adults, $status, $price) {
+function book_unit_form_builder($form_id, $form_state, $unit, $start_date, $end_date, $group_size_adults, $status, $price, $children = 0) {
 
   // Add stylesheets and classes.
   drupal_add_css(drupal_get_path('module', 'rooms_booking_manager') . '/css/booking_search.css');
@@ -563,7 +590,7 @@ function book_unit_form_builder($form_id, $form_state, $unit, $start_date, $end_
       '#type' => 'select',
       '#title' => t('Guests'),
       '#options' => range($unit->min_sleeps, $unit->max_sleeps),
-      '#default_value' => $unit->max_sleeps - $unit->min_sleeps,
+      '#default_value' => _rooms_booking_get_max_min_default($unit->max_sleeps, $unit->min_sleeps, $group_size_adults),
       '#ajax' => array(
         'callback' => 'rooms_booking_manager_quantity_change_callback',
         'wrapper' => 'unit_' . $unit->unit_id . '_price',
@@ -585,7 +612,7 @@ function book_unit_form_builder($form_id, $form_state, $unit, $start_date, $end_
         '#type' => 'select',
         '#title' => t('Children'),
         '#options' => range($unit->min_children, $max_children),
-        '#default_value' => 0,
+        '#default_value' => _rooms_booking_get_max_min_default($max_children, $unit->min_children, $children),
         '#ajax' => array(
           'callback' => 'rooms_booking_manager_children_change_callback',
           'wrapper' => 'unit_' . $unit->unit_id . '_childrensage',
@@ -1054,11 +1081,23 @@ function book_units_per_type_form($form, $form_state, $units_per_type, $start_da
             if (variable_get('rooms_price_calculation', ROOMS_PER_NIGHT) == ROOMS_PER_PERSON) {
               $tmp_unit = $units[$units_keys[$c - 1]]['unit'];
 
+              // How many adults were passed into booking
+              // parameters sent from availability search?
+              if (isset($booking_parameters[$c]['adults'])) {
+                $adults = $booking_parameters[$c]['adults'];
+              }
+              elseif (isset($booking_parameters[1]['adults'])) {
+                $adults = $booking_parameters[1]['adults'];
+              }
+              else {
+                $adults = 0;
+              }
+
               $form[$type][$price]['fieldset'][$c]['persons'] = array(
                 '#type' => 'select',
                 '#title' => t('Guests'),
                 '#options' => range($tmp_unit->min_sleeps, $tmp_unit->max_sleeps),
-                '#default_value' => $tmp_unit->max_sleeps - $tmp_unit->min_sleeps,
+                '#default_value' => _rooms_booking_get_max_min_default($tmp_unit->max_sleeps, $tmp_unit->min_sleeps, $adults),
                 '#ajax' => array(
                   'callback' => 'rooms_booking_manager_quantity_change_callback',
                   'wrapper' => $type . '_' . $price . '_container',
@@ -1077,11 +1116,24 @@ function book_units_per_type_form($form, $form_state, $units_per_type, $start_da
 
               if (variable_get('rooms_display_children', ROOMS_DISPLAY_CHILDREN_NO) == ROOMS_DISPLAY_CHILDREN) {
                 if ($tmp_unit->max_children > 0) {
+
+                  // How many children were passed into booking
+                  // parameters sent from availability search?
+                  if (isset($booking_parameters[$c]['children'])) {
+                    $children = $booking_parameters[$c]['children'];
+                  }
+                  elseif (isset($booking_parameters[1]['children'])) {
+                    $children = $booking_parameters[1]['children'];
+                  }
+                  else {
+                    $children = 0;
+                  }
+
                   $form[$type][$price]['fieldset'][$c]['children'] = array(
                     '#type' => 'select',
                     '#title' => t('Children'),
                     '#options' => range($tmp_unit->min_children, $max_children),
-                    '#default_value' => 0,
+                    '#default_value' => _rooms_booking_get_max_min_default($max_children, $tmp_unit->min_children, $children),
                     '#ajax' => array(
                       'callback' => 'rooms_booking_manager_children_change_callback',
                       'wrapper' => $type . '_' . $price . '_' . $c . '_childrensage',
@@ -2369,4 +2421,34 @@ function rooms_booking_manager_form_info_snippet($date_format, $start_date, $end
   $form = array_merge($form_tmp, $form);
 
   return $form;
+}
+
+/**
+ * Given a test number, this helper function returns the desired value based
+ * on a max and min range.  The return has been normalized to zero, due to
+ * how the range() function works in combination with unkeyed select options.
+ *
+ * @param  integer $max  the maximum number in the range
+ * @param  integer $min  the minimum number in the range
+ * @param  integer $test the number to test.
+ * @return integer       the default value to use in a select list range.
+ */
+function _rooms_booking_get_max_min_default($max = 0, $min = 0, $test = 0) {
+      // If the number of children is too big, set the default number of
+      // children to the max.
+      if ($test > $max) {
+        // Because the range is keyed to always start with zero,
+        // we have to calculate the value in the following way:
+        return $max - $min;
+      }
+      // If the group size is fewer than the minimum required to purchase, set
+      // the default to the minimum (i.e. "0" the first value in the list)
+      elseif ($test < $min) {
+        return 0;
+      }
+      // Otherwise, the group size is in the correct range, so set the value
+      // to the group size.
+      else {
+        return  $test - $min;
+      }
 }
